@@ -4,6 +4,7 @@ import logging
 import os
 from datetime import datetime
 from typing import Literal
+# from dotenv import load_dotenv
 
 from forecasting_tools import (
     AskNewsSearcher,
@@ -23,6 +24,8 @@ from forecasting_tools import (
     clean_indents,
 )
 import typeguard
+
+# load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -79,7 +82,7 @@ class Q1TemplateBot(ForecastBot):
             elif os.getenv("PERPLEXITY_API_KEY"):
                 research = await self._call_perplexity(question.question_text)
             elif os.getenv("OPENROUTER_API_KEY"):
-                research = await self._call_perplexity(question.question_text, use_open_router=True)
+                research = await self._call_free_model(question.question_text, use_open_router=True)
             else:
                 research = ""
             logger.info(f"Found Research for {question.page_url}:\n{research}")
@@ -99,6 +102,29 @@ class Q1TemplateBot(ForecastBot):
         )
         if use_open_router:
             model_name = "openrouter/perplexity/sonar-reasoning"
+        else:
+            model_name = "perplexity/sonar-pro" # perplexity/sonar-reasoning and perplexity/sonar are cheaper, but do only 1 search.
+        model = GeneralLlm(
+            model=model_name,
+            temperature=0.1,
+        )
+        response = await model.invoke(prompt)
+        return response
+    
+    async def _call_free_model(self, question: str, use_open_router: bool = False) -> str:
+        prompt = clean_indents(
+            f"""
+            You are an assistant to a superforecaster.
+            The superforecaster will give you a question they intend to forecast on.
+            To be a great assistant, you generate a concise but detailed rundown of the most relevant news, including if the question would resolve Yes or No based on current information.
+            You do not produce forecasts yourself.
+
+            Question:
+            {question}
+            """
+        )
+        if use_open_router:
+            model_name = "openrouter/deepseek/deepseek-r1"
         else:
             model_name = "perplexity/sonar-pro" # perplexity/sonar-reasoning and perplexity/sonar are cheaper, but do only 1 search.
         model = GeneralLlm(
@@ -135,7 +161,7 @@ class Q1TemplateBot(ForecastBot):
         elif os.getenv("ANTHROPIC_API_KEY"):
             model = GeneralLlm(model="claude-3-5-sonnet-20241022", temperature=0.3)
         elif os.getenv("OPENROUTER_API_KEY"):
-            model = GeneralLlm(model="openrouter/openai/gpt-4o", temperature=0.3)
+            model = GeneralLlm(model="openrouter/deepseek/deepseek-r1:free", temperature=0.3)
         elif os.getenv("METACULUS_TOKEN"):
             model = GeneralLlm(model="metaculus/gpt-4o", temperature=0.3)
         else:
