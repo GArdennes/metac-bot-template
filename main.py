@@ -24,6 +24,9 @@ from forecasting_tools import (
     clean_indents,
 )
 import typeguard
+import litellm
+
+litellm.set_verbose = True
 
 # load_dotenv()
 
@@ -77,12 +80,12 @@ class Q1TemplateBot(ForecastBot):
             research = ""
             if os.getenv("ASKNEWS_CLIENT_ID") and os.getenv("ASKNEWS_SECRET"):
                 research = AskNewsSearcher().get_formatted_news(question.question_text)
-            elif os.getenv("EXA_API_KEY"):
-                research = await self._call_exa_smart_searcher(question.question_text)
-            elif os.getenv("PERPLEXITY_API_KEY"):
-                research = await self._call_perplexity(question.question_text)
-            elif os.getenv("OPENROUTER_API_KEY"):
-                research = await self._call_free_model(question.question_text, use_open_router=True)
+            # elif os.getenv("EXA_API_KEY"):
+            #     research = await self._call_exa_smart_searcher(question.question_text)
+            # elif os.getenv("PERPLEXITY_API_KEY"):
+            #     research = await self._call_perplexity(question.question_text)
+            elif os.getenv("METACULUS_TOKEN"):
+                research = await self._call_free_model(question.question_text, use_ext_api=True)
             else:
                 research = ""
             logger.info(f"Found Research for {question.page_url}:\n{research}")
@@ -111,7 +114,7 @@ class Q1TemplateBot(ForecastBot):
         response = await model.invoke(prompt)
         return response
     
-    async def _call_free_model(self, question: str, use_open_router: bool = False) -> str:
+    async def _call_free_model(self, question: str, use_ext_api: bool = False) -> str:
         prompt = clean_indents(
             f"""
             You are an assistant to a superforecaster.
@@ -123,10 +126,8 @@ class Q1TemplateBot(ForecastBot):
             {question}
             """
         )
-        if use_open_router:
-            model_name = "openrouter/deepseek/deepseek-r1"
-        else:
-            model_name = "perplexity/sonar-pro" # perplexity/sonar-reasoning and perplexity/sonar are cheaper, but do only 1 search.
+        if use_ext_api:
+            model_name = "metaculus/gpt-4o"
         model = GeneralLlm(
             model=model_name,
             temperature=0.1,
@@ -156,14 +157,12 @@ class Q1TemplateBot(ForecastBot):
 
     def _get_final_decision_llm(self) -> GeneralLlm:
         model = None
-        if os.getenv("OPENAI_API_KEY"):
-            model = GeneralLlm(model="gpt-4o", temperature=0.3)
-        elif os.getenv("ANTHROPIC_API_KEY"):
-            model = GeneralLlm(model="claude-3-5-sonnet-20241022", temperature=0.3)
+        if os.getenv("METACULUS_TOKEN"):
+            model = GeneralLlm(model="metaculus/gpt-4o", temperature=0.3)
+        # elif os.getenv("ANTHROPIC_API_KEY"):
+        #     model = GeneralLlm(model="claude-3-5-sonnet-20241022", temperature=0.3)
         elif os.getenv("OPENROUTER_API_KEY"):
             model = GeneralLlm(model="openrouter/deepseek/deepseek-r1:free", temperature=0.3)
-        elif os.getenv("METACULUS_TOKEN"):
-            model = GeneralLlm(model="metaculus/gpt-4o", temperature=0.3)
         else:
             raise ValueError("No API key for final_decision_llm found")
         return model
@@ -369,8 +368,10 @@ def summarize_reports(forecast_reports: list[ForecastReport | BaseException]) ->
         logger.info(question_summary)
 
     if exceptions:
+        for exception in exceptions:
+            logger.error(f"Exception occurred: {exception}")
         raise RuntimeError(
-            f"{len(exceptions)} errors occurred while forecasting: {exceptions}"
+            f"{len(exceptions)} errors occurred while forecasting. Check logs for details."
         )
     if minor_exceptions:
         logger.error(
