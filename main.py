@@ -403,7 +403,7 @@ if __name__ == "__main__":
         predictions_per_research_report=5,
         use_research_summary_to_forecast=False,
         publish_reports_to_metaculus=True,
-        folder_to_save_reports_to=None,
+        folder_to_save_reports_to=os.path.join(os.getcwd(), "results"),
         skip_previously_forecasted_questions=True,
     )
 
